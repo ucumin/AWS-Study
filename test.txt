@@ -1,0 +1,8 @@
+講義21_課題：PRの作成
+
+1. git branchで現在どのブランチにいるか確認（⇒ git checkout test でtestに移動）
+2. notepad test.txt でtest.txtを編集
+3. git add test.txt （git add .）で変更内容をステージング環境へ追加
+4. git commit -m "test.txtを作成" で変更内容をコミット
+5. git push origin test（git push origin HEAD） でtestブランチへ変更内容をプッシュ
+6. GitHub上でPull Requestを作成
