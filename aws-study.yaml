@@ -1,6 +1,14 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: AWS-Study Template
 
+Parameters:
+  DBUser:
+    Type: String
+    Default: root
+  DBPassword:
+    Type: String
+    NoEcho: true
+
 Resources:
   # VPC
   VPC:
@@ -34,6 +42,26 @@ Resources:
       Tags:
         - Key: Name
           Value: aws-study-subnet1c
+  PrivateSubnetAZ1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      VpcId:  !Ref VPC
+      CidrBlock: 10.0.32.0/20
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: aws-study-private-subnet1a
+  PrivateSubnetAZ1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1c
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.48.0/20
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: aws-study-private-subnet1c
 
   # InternetGateway
   InternetGateway:
@@ -112,7 +140,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: awd-study-rds-sg
+          Value: aws-study-rds-sg
 
   # EC2の作成
   EC2:
@@ -143,8 +171,8 @@ Resources:
       Port: 3306
       StorageType: gp2
       BackupRetentionPeriod: 1
-      MasterUsername: root
-      MasterUserPassword: rootroot
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
       PreferredBackupWindow: 15:00-16:00
       PreferredMaintenanceWindow: sun:18:00-sun:19:00
       DBName: awsstudy
@@ -163,8 +191,8 @@ Resources:
       Properties:
         DBSubnetGroupDescription: Created from the RDS Management Console
         SubnetIds:
-          - !Ref SubnetAZ1a
-          - !Ref SubnetAZ1c
+          - !Ref PrivateSubnetAZ1a
+          - !Ref PrivateSubnetAZ1c
   
   # ELBの作成
   ELB:
