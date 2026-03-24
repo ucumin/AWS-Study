@@ -8,6 +8,8 @@ Parameters:
   DBPassword:
     Type: String
     NoEcho: true
+  MyIP:
+    Type: String
 
 Resources:
   # VPC
@@ -117,7 +119,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: !Ref MyIP
       # アウトバウンドセキュリティグループの設定
       SecurityGroupEgress:
         - IpProtocol: -1
@@ -199,6 +201,7 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: aws-study-elb
+      Scheme: internet-facing
       SecurityGroups:
         - !Ref SecurityGroupALB
       Subnets:
