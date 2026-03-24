@@ -117,7 +117,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 13.193.103.99/32
+          CidrIp: 0.0.0.0/0
       # アウトバウンドセキュリティグループの設定
       SecurityGroupEgress:
         - IpProtocol: -1
