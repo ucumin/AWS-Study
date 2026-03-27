@@ -174,7 +174,7 @@ Resources:
       DBInstanceClass: db.t4g.micro
       Port: 3306
       StorageType: gp2
-      BackupRetentionPeriod: 1
+      BackupRetentionPeriod: 7
       MasterUsername: !Ref DBUser
       MasterUserPassword: !Ref DBPassword
       PreferredBackupWindow: 15:00-16:00
@@ -280,6 +280,28 @@ Resources:
             SampledRequestsEnabled: true
             CloudWatchMetricsEnabled: true
             MetricName: AWS-AWSManagedRulesCommonRuleSet
+  WAFLogResourcePolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: waf-log-policy
+      PolicyDocument: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+           {
+              "Sid": "AWSWAFLogs",
+             "Effect": "Allow",
+             "Principal": {
+                "Service": "wafv2.amazonaws.com"
+              },
+              "Action": [
+               "logs:CreateLogStream",
+               "logs:PutLogEvents"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
 
   # WAF と ALB の関連付け
   WAFAssociation:
@@ -336,6 +358,30 @@ Resources:
     Properties:
       LogGroupName: aws-waf-logs-aws-study
       RetentionInDays: 7
+
+  WAFBlockedRequestsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref WAFLogGroup
+      FilterPattern: '{ $.action = "BLOCK" }'
+      MetricTransformations:
+        - MetricValue: "1"
+          MetricNamespace: WAFLogs
+          MetricName: BlockedRequests
+
+  WAFBlockedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: aws-study-waf-block-alarm
+      Namespace: WAFLogs
+      MetricName: BlockedRequests
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SNSTopic
 
   # WAF Logging
   WAFLogging:
