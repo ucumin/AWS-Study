@@ -10,6 +10,8 @@ Parameters:
     NoEcho: true
   MyIP:
     Type: String
+  NotificationEmail:
+    Type: String
 
 Resources:
   # VPC
@@ -245,9 +247,102 @@ Resources:
   ELBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref ELB
+      LoadBalancerArn: !GetAtt ELB.LoadBalancerArn
       DefaultActions:
         - TargetGroupArn: !Ref ELBTargetGroup
           Type: forward 
       Port: 80
       Protocol: HTTP
+
+  # WAF WebACL
+  WAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: AWS-Study
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      Description: AWS Study WAF
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: AWS-Study
+      Rules:
+        - Name: AWS-AWSManagedRulesCommonRuleSet
+          Priority: 0
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWS-AWSManagedRulesCommonRuleSet
+
+  # WAF と ALB の関連付け
+  WAFAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    DependsOn: ELB
+    Properties:
+      ResourceArn: !GetAtt ELB.LoadBalancerArn
+      WebACLArn: !GetAtt WAFWebACL.Arn
+
+  # Alarm設定
+  EC2CPUUtilizationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "aws-study-cpu-utilization-alarm" 
+      AlarmDescription: "Aws-Study EC2のCPU使用率が5%以上になりました。" 
+    
+      Namespace: "AWS/EC2"
+      Dimensions:
+        - Name: "InstanceId"
+          Value: !Ref EC2
+      MetricName: "CPUUtilization"
+      Unit: "Percent"
+
+      Period: 300
+      Statistic: "Average"
+
+      Threshold: 5
+      ComparisonOperator: "GreaterThanOrEqualToThreshold"
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      TreatMissingData: "missing"
+
+      ActionsEnabled: True
+      AlarmActions:
+        - !Ref SNSTopic 
+  
+  # SNSTopicの作成
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: AWS-Study-Topic
+
+  # SNSメール通知
+  SNSEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SNSTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+  
+  # WAF LogGroupを作成
+  WAFLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: aws-waf-logs-aws-study
+      RetentionInDays: 7
+
+  # WAF Logging
+  WAFLogging:
+    Type: AWS::WAFv2::LoggingConfiguration
+    DependsOn:
+      - WAFLogGroup
+    Properties:
+      ResourceArn: !GetAtt WAFWebACL.Arn
+      LogDestinationConfigs:
+        - !GetAtt WAFLogGroup.Arn
