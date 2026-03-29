@@ -12,6 +12,8 @@ Parameters:
     Type: String
   MyIP:
     Type: String
+    ConstraintDescription: must be CIDR /32 format
+    ConstraintPattern: ^([0-9]{1,3}\.){3}[0-9]{1,3}/32$
 
 Resources:
   # VPC
