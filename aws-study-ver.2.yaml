@@ -8,8 +8,6 @@ Parameters:
   DBPassword:
     Type: String
     NoEcho: true
-  MyIP:
-    Type: String
   NotificationEmail:
     Type: String
 
@@ -121,7 +119,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Ref MyIP
+          CidrIp: 0.0.0.0/0
       # アウトバウンドセキュリティグループの設定
       SecurityGroupEgress:
         - IpProtocol: -1
@@ -150,6 +148,7 @@ Resources:
   EC2:
     Type: AWS::EC2::Instance
     Properties:
+      IamInstanceProfile: !Ref EC2InstanceProfile
       # Amazon Linux 2023 の最新 AMI（SSM パラメータから自動取得）
       ImageId: !Sub "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
       InstanceType: t2.micro
@@ -163,6 +162,24 @@ Resources:
       Tags:
         - Key: Name
           Value: aws-study-ec2
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: aws-study-ec2-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2Role
 
   # RDS
   RDS:
@@ -280,29 +297,7 @@ Resources:
             SampledRequestsEnabled: true
             CloudWatchMetricsEnabled: true
             MetricName: AWS-AWSManagedRulesCommonRuleSet
-  WAFLogResourcePolicy:
-    Type: AWS::Logs::ResourcePolicy
-    Properties:
-      PolicyName: waf-log-policy
-      PolicyDocument: |
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-           {
-              "Sid": "AWSWAFLogs",
-             "Effect": "Allow",
-             "Principal": {
-                "Service": "wafv2.amazonaws.com"
-              },
-              "Action": [
-               "logs:CreateLogStream",
-               "logs:PutLogEvents"
-              ],
-              "Resource": "*"
-            }
-          ]
-        }
-
+ 
   # WAF と ALB の関連付け
   WAFAssociation:
     Type: AWS::WAFv2::WebACLAssociation
@@ -316,27 +311,37 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: "aws-study-cpu-utilization-alarm" 
-      AlarmDescription: "Aws-Study EC2のCPU使用率が5%以上になりました。" 
-    
+      AlarmDescription: "Aws-Study EC2のCPU使用率が5%以上になりました。"    
       Namespace: "AWS/EC2"
       Dimensions:
         - Name: "InstanceId"
           Value: !Ref EC2
       MetricName: "CPUUtilization"
       Unit: "Percent"
-
       Period: 300
       Statistic: "Average"
-
       Threshold: 5
       ComparisonOperator: "GreaterThanOrEqualToThreshold"
       EvaluationPeriods: 3
       DatapointsToAlarm: 2
       TreatMissingData: "missing"
-
       ActionsEnabled: True
       AlarmActions:
         - !Ref SNSTopic 
+  # Alarm設定(EC2 errorログ)
+  EC2ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: aws-study-ec2-error-alarm
+      Namespace: AWS-Study
+      MetricName: EC2ErrorCount
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref SNSTopic
   
   # SNSTopicの作成
   SNSTopic:
@@ -352,34 +357,23 @@ Resources:
       Protocol: email
       Endpoint: !Ref NotificationEmail
   
-  # WAF LogGroupを作成
-  WAFLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: aws-waf-logs-aws-study
-      RetentionInDays: 7
-
-  WAFBlockedRequestsMetricFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Ref WAFLogGroup
-      FilterPattern: '{ $.action = "BLOCK" }'
-      MetricTransformations:
-        - MetricValue: "1"
-          MetricNamespace: WAFLogs
-          MetricName: BlockedRequests
-
+  # CloudWatchAlarm(WAF標準メトリクス)
   WAFBlockedAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: aws-study-waf-block-alarm
-      Namespace: WAFLogs
+      Namespace: AWS/WAFV2
       MetricName: BlockedRequests
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1
       Threshold: 100
       ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: WebACL
+          Value: AWS-Study
+        - Name: Rule
+          Value: ALL
       AlarmActions:
         - !Ref SNSTopic
 
@@ -392,3 +386,25 @@ Resources:
       ResourceArn: !GetAtt WAFWebACL.Arn
       LogDestinationConfigs:
         - !GetAtt WAFLogGroup.Arn
+  
+  # CloudWatch Logs(WAFログ保存先)
+  WAFLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: aws-waf-logs-aws-study
+      RetentionInDays: 7
+  EC2LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: aws-study-ec2-log
+      RetentionInDays: 7
+
+  EC2ErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref EC2LogGroup
+      FilterPattern: "ERROR"
+      MetricTransformations:
+        - MetricValue: "1"
+          MetricNamespace: "AWS-Study"
+          MetricName: "EC2ErrorCount"
